@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 
@@ -21,15 +20,23 @@ func init() {
 	viper.OnConfigChange(func(e fsnotify.Event) {
 		log.Println("config reloaded:", e.Name)
 		handler.Projects = viper.GetStringMapString("projects")
+		if len(handler.Projects) == 0 {
+			log.Println("no configured project")
+		}
 	})
 	viper.WatchConfig()
 	if err := viper.ReadInConfig(); err != nil {
-		panic(fmt.Errorf("fatal error config file: %w", err))
+		log.Fatalf("no config file: %w", err)
 	}
 	handler.Projects = viper.GetStringMapString("projects")
+	if len(handler.Projects) == 0 {
+		log.Println("no configured project")
+	}
 }
 
 func main() {
 	log.Println("webhook started; listening on :8080")
-	http.ListenAndServe(":8080", handler)
+	if err := http.ListenAndServe(":8080", handler); err != nil {
+		log.Fatal(err)
+	}
 }
