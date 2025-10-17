@@ -19,9 +19,9 @@ This is the expected message format.
 type Message struct {
 	Lang    string `json:"lang"`
 	Code    string `json:"code"`
-	project string
-	file    string
-	branch  string
+	Project string `json:"-"`
+	File    string `json:"-"`
+	Branch  string `json:"-"`
 }
 
 func (m *Message) clean() {
@@ -46,16 +46,16 @@ func (m *Message) parse() error {
 	if len(fields) != 3 {
 		return fmt.Errorf("bad header")
 	}
-	m.project, m.file, m.branch = fields[0], fields[1], fields[2]
+	m.Project, m.File, m.Branch = fields[0], fields[1], fields[2]
 	return nil
 }
 
 type Handler struct {
 	Projects map[string]string // project name to project dir
+	Messages chan *Message
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.Println("webhook request received")
 	b, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		fmt.Println(err)
@@ -72,28 +72,29 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(err)
 		return
 	}
-	projectDir, ok := h.Projects[m.project]
+	projectDir, ok := h.Projects[m.Project]
 	if !ok {
-		log.Printf("no matching project: %v", m.project)
+		// log.Printf("no matching project: %v", m.project)
 		return
 	}
 	if headBranch, err := getHeadBranch(projectDir); err != nil {
 		log.Println("git error:", err)
 		return
-	} else if headBranch != m.branch {
-		log.Printf("head branch mismatch: expected %v got %v", m.branch, headBranch)
+	} else if headBranch != m.Branch {
+		log.Printf("head branch mismatch: expected %v got %v", m.Branch, headBranch)
 		return
 	}
-	if err := os.WriteFile(path.Join(projectDir, m.file), []byte(m.Code), 0644); err != nil {
+	fullPath := path.Join(projectDir, m.File)
+	dir := path.Dir(fullPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		log.Println("mkdir error:", err)
+		return
+	}
+	if err := os.WriteFile(path.Join(projectDir, m.File), []byte(m.Code), 0644); err != nil {
 		log.Println("write error:", err)
 		return
 	}
-	log.Printf("project:  %v", m.project)
-	log.Printf("branch:   %v", m.branch)
-	log.Printf("file:     %v", m.file)
-	log.Printf("lang:     %v", m.Lang)
-	log.Printf("size:     %v", len(m.Code))
-	log.Printf("status:   ok")
+	h.Messages <- m
 }
 
 func getHeadBranch(projectDir string) (string, error) {

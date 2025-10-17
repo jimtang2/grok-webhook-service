@@ -1,3 +1,4 @@
+// webhook$$grok-webhook;main.go;grok$$
 package main
 
 import (
@@ -12,10 +13,13 @@ import (
 var (
 	handler = &webhook.Handler{
 		Projects: map[string]string{},
+		Messages: make(chan *webhook.Message),
 	}
 )
 
 func init() {
+	log.SetFlags(log.Ldate | log.Ltime)
+
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
@@ -38,8 +42,19 @@ func init() {
 }
 
 func main() {
-	log.Println("webhook started; listening on", viper.GetString("port"))
-	if err := http.ListenAndServe(viper.GetString("port"), handler); err != nil {
+	go func() {
+		err := http.ListenAndServe(viper.GetString("port"), handler)
 		log.Fatal(err)
+	}()
+	model := NewModel()
+	go model.run()
+
+	for {
+		select {
+		case msg := <-handler.Messages:
+			go func() {
+				model.Update(msg)
+			}()
+		}
 	}
 }
