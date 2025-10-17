@@ -26,14 +26,13 @@ func NewModel() *Model {
 		last:  time.Now(),
 	}
 	styles := table.DefaultStyles()
-	// styles.Header = styles.Header.Copy()
 	styles.Header = styles.Header.Copy().Padding(0, 0)
 	styles.Cell = styles.Cell.Copy().Padding(0, 0).Foreground(lipgloss.Color("42"))
 	styles.Selected = styles.Cell
 	m.table = table.New(
 		table.WithColumns([]table.Column{
 			{Title: "Project/Branch", Width: 20},
-			{Title: "Files", Width: 80},
+			{Title: "Last Updated Files", Width: 80},
 		}),
 		table.WithRows(m.rows),
 		table.WithStyles(styles),
@@ -42,7 +41,7 @@ func NewModel() *Model {
 }
 
 func (m *Model) Init() tea.Cmd {
-	return m.watch.Init()
+	return tea.Batch(m.watch.Init(), tea.WindowSize())
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -55,13 +54,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		m.table.SetWidth(msg.Width)
+		m.table.SetHeight(msg.Height - 1)
+		cols := m.table.Columns()
+		col := cols[1]
+		col.Width = msg.Width - cols[0].Width - 2
+		m.table.SetColumns([]table.Column{cols[0], col})
+
 	case *webhook.Message:
 		if time.Now().Sub(m.last) > 5*time.Second {
 			m.last = time.Now()
 			m.rows = []table.Row{}
 		}
 		m.rows = append(m.rows, table.Row{
-			fmt.Sprintf("%v - %v", msg.Project, msg.Branch),
+			fmt.Sprintf("%v/%v", msg.Project, msg.Branch),
 			msg.File,
 		})
 		m.table.SetRows(m.rows)
